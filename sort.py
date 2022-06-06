@@ -4,6 +4,28 @@ import exifread
 from datetime import datetime, timedelta
 import re
 
+# Print iterations progress
+def printProgressBar (iteration, total, prefix = '', suffix = '', decimals = 1, length = 100, fill = '█', printEnd = ""):
+    """
+    Call in a loop to create terminal progress bar
+    @params:
+        iteration   - Required  : current iteration (Int)
+        total       - Required  : total iterations (Int)
+        prefix      - Optional  : prefix string (Str)
+        suffix      - Optional  : suffix string (Str)
+        decimals    - Optional  : positive number of decimals in percent complete (Int)
+        length      - Optional  : character length of bar (Int)
+        fill        - Optional  : bar fill character (Str)
+        printEnd    - Optional  : end character (e.g. "\r", "\r\n") (Str)
+    """
+    percent = ("{0:." + str(decimals) + "f}").format(100 * (iteration / float(total)))
+    filledLength = int(length * iteration // total)
+    bar = fill * filledLength + '-' * (length - filledLength)
+    print(f'\r{prefix} |{bar}| {percent}% {suffix}', end = printEnd)
+    # Print New Line on Complete
+    if iteration == total: 
+        print()
+
 def parse_date_exif(date_string):
     """
     extract date info from EXIF data
@@ -132,10 +154,15 @@ for root, subdirectories, files in os.walk(input_dir):
         filepath = os.path.join(root, file)
         extension = os.path.splitext(file)[1].lower()
 
+        # progress
+        files_processed = files_processed + 1
+        # print(f'[{files_processed}/{number_files}]')
+        printProgressBar(files_processed, number_files)
+
         if extension in accepted_extensions:
             date_found = False
-            files_processed = files_processed + 1
-            # print(f'processing file {file}')
+
+
             # Open image file for reading (must be in binary mode)
             f = open(filepath, 'rb')
 
@@ -143,10 +170,8 @@ for root, subdirectories, files in os.walk(input_dir):
             tags = exifread.process_file(f)
 
             for tag in tags.keys():
-                # print(f'tag: {tag}')
                 if tag == 'EXIF DateTimeOriginal':
                     date_1 = tags[tag]
-                    print(f'[{files_processed}/{number_files}] "{file}" DATE FOUND: {date_1}')
                     date_found = True
                     try:
                         exifdate = parse_date_exif(date_1)  # check for poor-formed exif data, but allow continuation
@@ -163,21 +188,16 @@ for root, subdirectories, files in os.walk(input_dir):
                         if not os.path.exists(dest_file):
                             os.makedirs(dest_file)
 
+                    # if file with same name exists at destination,
+                    # a "C" suffix will be added to the name recursively
                     move_file(filepath, root, dest_file + '/', file)
-                # if tag not in ('JPEGThumbnail', 'TIFFThumbnail', 'Filename', 'EXIF MakerNote'):
-                #     print("Key: %s, value %s" % (tag, tags[tag]))
 
-            if not date_found:
-                print(f'[{files_processed}/{number_files}] "{file}" DATE NOT FOUND.')
-                # for tag in tags.keys():
-                #     print(f'tag: {tag} | value: {tags[tag]}')
         else:
             unknown_file_count = unknown_file_count + 1
             if file == 'Icon\r':
                 continue
             else:
                 move_file(filepath, root, unknown_dir, file)
-                # shutil.move(filepath, unknown_dir)
 
 print(f'--- DONE ---')
 print(f'{files_processed} files processed.')
