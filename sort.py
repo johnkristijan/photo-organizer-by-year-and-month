@@ -116,17 +116,41 @@ def move_file(src_path, src_folder, dst_folder, filename):
         print(f'File not found: {src_path}')
         return False
 
+def get_date_from_tag(key, tags):
+    for tag in tags.keys():
+        if tag == key:
+            the_date = tags[tag]
+            try:
+                return parse_date_exif(the_date)
+            except Exception as e:
+                return None
+
+def print_tags(tags):
+    for tag in tags.keys():
+        if tag == 'JPEGThumbnail':
+            print(f'tag: {tag} | val: too long to print')
+        else:
+            print(f'tag: {tag} | val: {tags[tag]}')
+
+def get_file_birth(path):
+    try:
+        return datetime.fromtimestamp(os.path.getmtime(path))
+    except Exception as e:
+        return None
 
 input_dir = './input/'
 output_dir = './output/'
 unknown_dir = './unknown/'
 
 blacklist = ['.DS_Store', 'Icon\r']
+# accepted_extensions = ['.mp4', '.mov', '.avi']
 accepted_extensions = ['.jpg', '.jpeg', '.png', '.gif']
 
+sort_format = '%Y/%m-%b'
 files_processed = 0
 unknown_file_count = 0
 number_files = 0
+success_processed = 0
 
 file_list = os.listdir(input_dir) # dir is your directory path
 try:
@@ -152,16 +176,14 @@ for root, subdirectories, files in os.walk(input_dir):
             continue
 
         filepath = os.path.join(root, file)
-        extension = os.path.splitext(file)[1].lower()
+        extension = os.path.splitext(file)[1].lower().strip()
 
         # progress
         files_processed = files_processed + 1
-        # print(f'[{files_processed}/{number_files}]')
-        printProgressBar(files_processed, number_files)
+        print(f'[{files_processed}/{number_files}]')
+        # printProgressBar(files_processed, number_files)
 
         if extension in accepted_extensions:
-            date_found = False
-
 
             # Open image file for reading (must be in binary mode)
             f = open(filepath, 'rb')
@@ -169,28 +191,34 @@ for root, subdirectories, files in os.walk(input_dir):
             # Return Exif tags
             tags = exifread.process_file(f)
 
-            for tag in tags.keys():
-                if tag == 'EXIF DateTimeOriginal':
-                    date_1 = tags[tag]
-                    date_found = True
-                    try:
-                        exifdate = parse_date_exif(date_1)  # check for poor-formed exif data, but allow continuation
-                    except Exception as e:
-                        exifdate = None
+            # first prio is to get date from 'DateTimeOriginal'
+            valid_date = get_date_from_tag('EXIF DateTimeOriginal', tags)
+            if not valid_date:
+                # second prio is the 'DateTimeDigitized'
+                valid_date = get_date_from_tag('EXIF DateTimeDigitized', tags)
+                if not valid_date:
+                    # third prio is the 'Image DateTime'
+                    valid_date = get_date_from_tag('Image DateTime', tags)
+                    if not valid_date:
+                        # 4th prio is the filesystem creation date
+                        valid_date = get_file_birth(filepath)
 
-                    # create folder structure
-                    sort_format = '%Y/%m-%b'
-                    dir_structure = exifdate.strftime(sort_format)
-                    dirs = dir_structure.split('/')
-                    dest_file = output_dir
-                    for thedir in dirs:
-                        dest_file = os.path.join(dest_file, thedir)
-                        if not os.path.exists(dest_file):
-                            os.makedirs(dest_file)
+            if valid_date is not None:
+                # create folder structure
+                dir_structure = valid_date.strftime(sort_format)
+                dirs = dir_structure.split('/')
+                dest_file = output_dir
+                for thedir in dirs:
+                    dest_file = os.path.join(dest_file, thedir)
+                    if not os.path.exists(dest_file):
+                        os.makedirs(dest_file)
 
-                    # if file with same name exists at destination,
-                    # a "C" suffix will be added to the name recursively
-                    move_file(filepath, root, dest_file + '/', file)
+                # if file with same name exists at destination,
+                # a "C" suffix will be added to the name recursively
+                move_file(filepath, root, dest_file + '/', file)
+                success_processed = success_processed + 1
+            else:
+                print_tags(tags)
 
         else:
             unknown_file_count = unknown_file_count + 1
@@ -201,4 +229,5 @@ for root, subdirectories, files in os.walk(input_dir):
 
 print(f'--- DONE ---')
 print(f'{files_processed} files processed.')
+print(f'{success_processed} files moved into correct folder.')
 print(f'{unknown_file_count} unknown files moved to unknown folder.')
